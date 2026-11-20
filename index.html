@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0891B2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Estoque Ala">
+  <meta name="description" content="Sistema PWA para controle inteligente de estoque de ala hospitalar">
+  <title>Estoque Hospitalar - Controle de Ala</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            hospital: { 50:'#F0FDFA', 100:'#CCFBF1', 200:'#99F6E4', 300:'#5EEAD4', 400:'#2DD4BF', 500:'#14B8A6', 600:'#0891B2', 700:'#0E7490', 800:'#155E75', 900:'#164E63' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body class="bg-hospital-50 text-slate-800">
+
+  <!-- ============ PWA INSTALL BANNER ============ -->
+  <div id="pwa-install-banner" class="hidden">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+      <span>Instale o app para acesso rápido e offline!</span>
+    </div>
+    <div class="flex gap-2">
+      <button id="btn-pwa-install" class="bg-white text-hospital-700 px-4 py-1.5 rounded-lg font-semibold text-sm hover:bg-hospital-50 transition">Instalar</button>
+      <button id="btn-pwa-dismiss" class="text-white/70 hover:text-white p-1" aria-label="Fechar">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ TOP BAR ============ -->
+  <header id="top-bar" class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm">
+    <div class="max-w-5xl mx-auto px-3 py-2">
+      <!-- Linha 1: Status + Logo -->
+      <div class="flex items-center justify-between mb-1.5">
+        <div id="connection-status" class="status-online flex items-center gap-1.5 text-xs font-medium">
+          <span class="pulse-dot"></span>
+          <span class="status-text">Online</span>
+        </div>
+        <h1 class="text-sm font-bold text-hospital-700 flex items-center gap-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          Estoque Ala
+        </h1>
+      </div>
+      <!-- Linha 2: Responsável + Turno -->
+      <div class="flex items-center gap-2">
+        <div class="flex-1 relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          <input type="text" id="input-responsible" placeholder="Nome do Responsável" autocomplete="off"
+            class="form-input pl-9 py-2 text-sm" aria-label="Nome do responsável">
+        </div>
+        <select id="select-shift" class="form-input py-2 text-sm w-auto pr-8" aria-label="Turno atual">
+          <option value="Manhã">☀️ Manhã</option>
+          <option value="Tarde">🌤️ Tarde</option>
+          <option value="Noite">🌙 Noite</option>
+        </select>
+        <button id="btn-save-shift" class="bg-hospital-600 text-white p-2 rounded-xl hover:bg-hospital-700 transition active:scale-95" aria-label="Salvar responsável e turno" title="Salvar">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ ALERT BANNERS (Feriados/Logística) ============ -->
+  <div id="alert-banners-container" class="max-w-5xl mx-auto px-3 mt-2"></div>
+
+  <!-- ============ MAIN CONTENT ============ -->
+  <main class="main-content max-w-5xl mx-auto px-3 pb-24 pt-2">
+
+    <!-- === SEÇÃO: INÍCIO === -->
+    <section id="section-inicio">
+      <!-- Data atual -->
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800" id="dashboard-greeting">Painel de Controle</h2>
+          <p class="text-sm text-slate-500" id="dashboard-date"></p>
+        </div>
+      </div>
+
+      <!-- Alertas de Anomalia -->
+      <div id="anomaly-alerts" class="mb-3"></div>
+
+      <!-- Alertas de Validade -->
+      <div id="expiry-alerts" class="mb-3"></div>
+
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div class="stat-card">
+          <span class="stat-value text-hospital-600" id="stat-total-items">0</span>
+          <span class="stat-label">Total de Itens</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value text-amber-500" id="stat-low-stock">0</span>
+          <span class="stat-label">Estoque Baixo</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value text-red-500" id="stat-expiring">0</span>
+          <span class="stat-label">Vencendo em breve</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value text-emerald-600" id="stat-movements-today">0</span>
+          <span class="stat-label">Movim. Hoje</span>
+        </div>
+      </div>
+
+      <!-- Movimentações Recentes -->
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-hospital-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Últimas Movimentações
+        </h3>
+        <div id="recent-movements" class="divide-y divide-slate-50">
+          <p class="text-sm text-slate-400 py-4 text-center">Nenhuma movimentação registrada ainda.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- === SEÇÃO: ESTOQUE === -->
+    <section id="section-estoque" class="hidden">
+      <!-- Barra de Busca e Filtros -->
+      <div class="sticky top-[88px] z-30 bg-hospital-50/95 backdrop-blur pb-2 pt-1 -mx-3 px-3">
+        <div class="relative mb-2">
+          <svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="search" id="stock-search" placeholder="Buscar item por nome..." class="form-input pl-10 py-2.5" aria-label="Buscar item">
+        </div>
+        <div class="flex gap-2">
+          <select id="stock-filter-category" class="form-input py-2 text-sm flex-1" aria-label="Filtrar por categoria">
+            <option value="">Todas as categorias</option>
+            <option value="Descartáveis">Descartáveis</option>
+            <option value="Curativos">Curativos</option>
+            <option value="EPIs">EPIs</option>
+            <option value="Medicamentos">Medicamentos</option>
+            <option value="Outros">Outros</option>
+          </select>
+          <select id="stock-sort" class="form-input py-2 text-sm flex-1" aria-label="Ordenar por">
+            <option value="name">Nome A-Z</option>
+            <option value="stock-asc">Estoque ↑</option>
+            <option value="expiry">Vencimento (PVPS)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Grid de Itens -->
+      <div id="stock-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+        <div class="col-span-full text-center py-12">
+          <svg class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          <p class="text-slate-400 font-medium">Nenhum item cadastrado</p>
+          <p class="text-sm text-slate-400 mt-1">Toque no botão + para adicionar</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- === SEÇÃO: SUGESTÕES === -->
+    <section id="section-sugestoes" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Sugestões de Pedido</h2>
+          <p class="text-sm text-slate-500">Baseado no consumo das últimas 4 semanas</p>
+        </div>
+        <button id="btn-show-dismissed" class="text-sm text-hospital-600 font-medium hover:underline hidden">
+          Mostrar ocultadas
+        </button>
+      </div>
+      <div id="suggestions-list">
+        <div class="text-center py-12">
+          <svg class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          <p class="text-slate-400 font-medium">Sem sugestões para hoje</p>
+          <p class="text-sm text-slate-400 mt-1">Continue registrando movimentações para o sistema aprender o padrão de consumo.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- === SEÇÃO: RELATÓRIOS === -->
+    <section id="section-relatorios" class="hidden">
+      <h2 class="text-lg font-bold text-slate-800 mb-3">Relatórios</h2>
+      <!-- Filtros -->
+      <div class="flex gap-2 mb-4">
+        <input type="month" id="report-month-filter" class="form-input py-2 text-sm flex-1" aria-label="Filtrar por mês">
+        <select id="report-category-filter" class="form-input py-2 text-sm flex-1" aria-label="Filtrar por categoria">
+          <option value="">Todas as categorias</option>
+          <option value="Descartáveis">Descartáveis</option>
+          <option value="Curativos">Curativos</option>
+          <option value="EPIs">EPIs</option>
+          <option value="Medicamentos">Medicamentos</option>
+          <option value="Outros">Outros</option>
+        </select>
+      </div>
+
+      <!-- Gráfico Curva ABC -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <h3 class="text-sm font-semibold text-slate-700 mb-1">Curva ABC — Ranking de Consumo</h3>
+        <p class="text-xs text-slate-400 mb-3">Itens ordenados por volume de saída</p>
+        <div class="flex gap-3 mb-3 text-xs">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500"></span> A (80%)</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-500"></span> B (15%)</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500"></span> C (5%)</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="chart-abc"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico Comparativo Mensal -->
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <h3 class="text-sm font-semibold text-slate-700 mb-1">Comparativo Mensal</h3>
+        <p class="text-xs text-slate-400 mb-3">Consumo total por mês (últimos 6 meses)</p>
+        <div class="chart-container">
+          <canvas id="chart-monthly"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- === SEÇÃO: HISTÓRICO === -->
+    <section id="section-historico" class="hidden">
+      <h2 class="text-lg font-bold text-slate-800 mb-3">Histórico de Movimentações</h2>
+      <!-- Filtros -->
+      <div class="flex flex-wrap gap-2 mb-3">
+        <input type="date" id="history-date-start" class="form-input py-2 text-sm flex-1 min-w-[130px]" aria-label="Data início">
+        <input type="date" id="history-date-end" class="form-input py-2 text-sm flex-1 min-w-[130px]" aria-label="Data fim">
+        <select id="history-type-filter" class="form-input py-2 text-sm flex-1 min-w-[100px]" aria-label="Tipo de movimentação">
+          <option value="">Todos</option>
+          <option value="saida">Saídas</option>
+          <option value="entrada">Entradas</option>
+        </select>
+        <button id="btn-export-history" class="bg-hospital-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-hospital-700 transition active:scale-95 flex items-center gap-1.5" title="Exportar CSV">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          CSV
+        </button>
+      </div>
+      <!-- Lista -->
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div id="history-list">
+          <p class="text-sm text-slate-400 py-8 text-center">Nenhuma movimentação encontrada.</p>
+        </div>
+      </div>
+      <div class="text-center mt-3">
+        <button id="btn-load-more-history" class="text-sm text-hospital-600 font-medium hover:underline hidden">
+          Carregar mais...
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FAB ============ -->
+  <button id="fab-add-item" class="hidden" aria-label="Adicionar novo item">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+  </button>
+
+  <!-- ============ BOTTOM NAVIGATION ============ -->
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <div class="max-w-5xl mx-auto flex">
+      <button class="nav-btn nav-active" data-tab="inicio" aria-label="Início">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a2 2 0 11-4 0"/></svg>
+        <span>Início</span>
+      </button>
+      <button class="nav-btn" data-tab="estoque" aria-label="Estoque">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        <span>Estoque</span>
+      </button>
+      <button class="nav-btn" data-tab="sugestoes" aria-label="Sugestões">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <span>Sugestões</span>
+      </button>
+      <button class="nav-btn" data-tab="relatorios" aria-label="Relatórios">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <span>Relatórios</span>
+      </button>
+      <button class="nav-btn" data-tab="historico" aria-label="Histórico">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Histórico</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ============ MODAL: NOVO/EDITAR ITEM ============ -->
+  <div id="modal-overlay" class="modal-overlay" aria-modal="true" role="dialog">
+    <div class="modal-content" id="modal-item">
+      <div class="modal-handle sm:hidden"></div>
+      <div class="flex items-center justify-between mb-5">
+        <h2 id="modal-title" class="text-lg font-bold text-slate-800">Novo Item</h2>
+        <button id="btn-close-modal" class="p-2 hover:bg-slate-100 rounded-xl transition" aria-label="Fechar">
+          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <form id="item-form" class="space-y-4" novalidate>
+        <input type="hidden" id="item-id">
+
+        <!-- Foto -->
+        <div>
+          <label class="form-label">Foto do Item</label>
+          <div class="flex items-center gap-4">
+            <div id="photo-preview-container" class="w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden border-2 border-dashed border-slate-300">
+              <img id="photo-preview" src="" alt="" class="w-full h-full object-cover hidden">
+              <svg id="photo-placeholder" class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </div>
+            <div class="flex-1">
+              <label for="item-photo" class="block cursor-pointer bg-hospital-50 hover:bg-hospital-100 text-hospital-700 text-sm font-medium py-2.5 px-4 rounded-xl text-center transition border border-hospital-200">
+                📷 Escolher / Tirar Foto
+              </label>
+              <input type="file" id="item-photo" accept="image/*" capture="environment" class="hidden">
+              <p class="text-xs text-slate-400 mt-1">Máx. 400x400px, comprimida automaticamente</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Nome -->
+        <div>
+          <label for="item-name" class="form-label">Nome do Item *</label>
+          <input type="text" id="item-name" class="form-input" placeholder="Ex: Luva de Procedimento M" required>
+        </div>
+
+        <!-- Categoria + Unidade -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="item-category" class="form-label">Categoria</label>
+            <select id="item-category" class="form-input">
+              <option value="Descartáveis">Descartáveis</option>
+              <option value="Curativos">Curativos</option>
+              <option value="EPIs">EPIs</option>
+              <option value="Medicamentos">Medicamentos</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
+          <div>
+            <label for="item-unit" class="form-label">Unidade</label>
+            <select id="item-unit" class="form-input">
+              <option value="un">Unidade (un)</option>
+              <option value="cx">Caixa (cx)</option>
+              <option value="pct">Pacote (pct)</option>
+              <option value="frasco">Frasco</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Estoque Atual + Mínimo -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="item-stock" class="form-label">Estoque Atual</label>
+            <input type="number" id="item-stock" class="form-input" min="0" value="0" inputmode="numeric">
+          </div>
+          <div>
+            <label for="item-min-stock" class="form-label">Estoque Mínimo</label>
+            <input type="number" id="item-min-stock" class="form-input" min="0" value="0" inputmode="numeric">
+          </div>
+        </div>
+
+        <!-- Lote + Validade -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="item-lot" class="form-label">Nº do Lote</label>
+            <input type="text" id="item-lot" class="form-input" placeholder="Ex: LT2024-001">
+          </div>
+          <div>
+            <label for="item-expiry" class="form-label">Data de Validade</label>
+            <input type="date" id="item-expiry" class="form-input">
+          </div>
+        </div>
+
+        <!-- Botões -->
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="btn-cancel-item" class="flex-1 py-3 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition text-sm">
+            Cancelar
+          </button>
+          <button type="submit" id="btn-save-item" class="flex-1 py-3 px-4 rounded-xl bg-hospital-600 text-white font-semibold hover:bg-hospital-700 transition active:scale-[0.98] text-sm">
+            💾 Salvar Item
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: QUANTIDADE CUSTOMIZADA ============ -->
+  <div id="modal-qty-overlay" class="modal-overlay" aria-modal="true" role="dialog">
+    <div class="modal-content max-w-sm" id="modal-qty">
+      <div class="modal-handle sm:hidden"></div>
+      <h3 class="text-lg font-bold text-slate-800 mb-1" id="qty-modal-title">Quantidade</h3>
+      <p class="text-sm text-slate-500 mb-4" id="qty-item-name">-</p>
+      <input type="hidden" id="qty-item-id">
+      <input type="hidden" id="qty-type">
+
+      <div class="mb-4">
+        <label for="qty-amount" class="form-label">Quantidade</label>
+        <input type="number" id="qty-amount" class="form-input text-center text-2xl font-bold py-3" min="1" value="1" inputmode="numeric">
+      </div>
+
+      <div class="flex gap-3">
+        <button type="button" id="btn-cancel-qty" class="flex-1 py-3 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition text-sm">
+          Cancelar
+        </button>
+        <button type="button" id="btn-confirm-qty" class="flex-1 py-3 px-4 rounded-xl bg-hospital-600 text-white font-semibold hover:bg-hospital-700 transition active:scale-[0.98] text-sm">
+          ✅ Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOAST CONTAINER ============ -->
+  <div id="toast-container"></div>
+
+</body>
+</html>
